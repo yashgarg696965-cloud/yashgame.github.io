@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>3D Top Down Shooter</title>
+<style>
+body { margin:0; overflow:hidden; background:black; }
+#hud {
+  position:fixed;
+  top:10px; left:10px;
+  color:white;
+  background:rgba(0,0,0,0.6);
+  padding:10px;
+  font-family:Arial;
+  border-radius:8px;
+}
+#gameover {
+  position:fixed;
+  inset:0;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  background:rgba(0,0,0,0.8);
+  color:white;
+  font-family:Arial;
+  text-align:center;
+}
+button {
+  padding:10px 25px;
+  font-size:18px;
+  cursor:pointer;
+}
+</style>
+</head>
+<body>
+
+<div id="hud">
+❤️ Health: <span id="health">100</span><br>
+⭐ Score: <span id="score">0</span>
+</div>
+
+<div id="gameover">
+  <div>
+    <h1>GAME OVER</h1>
+    <p>Score: <span id="finalScore">0</span></p>
+    <button onclick="location.reload()">Restart</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+
+<script>
+// SCENE
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x202020);
+
+// CAMERA (TOP DOWN)
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 1000);
+camera.position.set(0, 25, 0);
+camera.lookAt(0,0,0);
+
+// RENDERER
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// LIGHTS
+scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
+const dLight = new THREE.DirectionalLight(0xffffff,0.6);
+dLight.position.set(10,20,10);
+scene.add(dLight);
+
+// FLOOR
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(60,60),
+  new THREE.MeshStandardMaterial({ color:0x228B22 })
+);
+floor.rotation.x = -Math.PI/2;
+scene.add(floor);
+
+// PLAYER
+const player = new THREE.Mesh(
+  new THREE.CylinderGeometry(1,1,1,16),
+  new THREE.MeshStandardMaterial({ color:0x00ffff })
+);
+player.position.y = 0.5;
+scene.add(player);
+
+// GAME DATA
+let health = 100;
+let score = 0;
+const hUI = document.getElementById("health");
+const sUI = document.getElementById("score");
+
+// INPUT
+const keys = {};
+addEventListener("keydown",e=>keys[e.key]=true);
+addEventListener("keyup",e=>keys[e.key]=false);
+
+// BULLETS
+const bullets = [];
+renderer.domElement.addEventListener("click", e=>{
+  const rect = renderer.domElement.getBoundingClientRect();
+  const mouse = new THREE.Vector2(
+    ( (e.clientX-rect.left)/rect.width )*2-1,
+    -( (e.clientY-rect.top)/rect.height )*2+1
+  );
+
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(mouse,camera);
+  const hit = ray.intersectObject(floor);
+
+  if(hit.length){
+    const dir = hit[0].point.clone().sub(player.position).normalize();
+    const bullet = new THREE.Mesh(
+      new THREE.SphereGeometry(0.3,8,8),
+      new THREE.MeshStandardMaterial({ color:0xffff00 })
+    );
+    bullet.position.copy(player.position);
+    bullet.userData.vel = dir.multiplyScalar(0.8);
+    scene.add(bullet);
+    bullets.push(bullet);
+  }
+});
+
+// ENEMIES
+const enemies = [];
+function spawnEnemy(){
+  const e = new THREE.Mesh(
+    new THREE.BoxGeometry(1.5,1.5,1.5),
+    new THREE.MeshStandardMaterial({ color:0xff0000 })
+  );
+  e.position.set(
+    Math.random()*40-20,
+    0.75,
+    Math.random()*40-20
+  );
+  scene.add(e);
+  enemies.push(e);
+}
+setInterval(spawnEnemy,1200);
+
+// LOOP
+function animate(){
+  requestAnimationFrame(animate);
+
+  // MOVE PLAYER
+  if(keys["ArrowUp"]) player.position.z -= 0.3;
+  if(keys["ArrowDown"]) player.position.z += 0.3;
+  if(keys["ArrowLeft"]) player.position.x -= 0.3;
+  if(keys["ArrowRight"]) player.position.x += 0.3;
+
+  // BULLETS
+  bullets.forEach((b,i)=>{
+    b.position.add(b.userData.vel);
+    if(b.position.length()>50){
+      scene.remove(b);
+      bullets.splice(i,1);
+    }
+  });
+
+  // ENEMIES
+  enemies.forEach((e,ei)=>{
+    const dir = player.position.clone().sub(e.position).normalize();
+    e.position.add(dir.multiplyScalar(0.05));
+
+    // DAMAGE
+    if(e.position.distanceTo(player.position)<1.5){
+      health -= 0.3;
+      hUI.textContent = Math.floor(health);
+      if(health<=0){
+        document.getElementById("finalScore").textContent = score;
+        document.getElementById("gameover").style.display="flex";
+        return;
+      }
+    }
+
+    // HIT
+    bullets.forEach((b,bi)=>{
+      if(b.position.distanceTo(e.position)<1){
+        scene.remove(e);
+        scene.remove(b);
+        enemies.splice(ei,1);
+        bullets.splice(bi,1);
+        score += 10;
+        sUI.textContent = score;
+      }
+    });
+  });
+
+  renderer.render(scene,camera);
+}
+animate();
+</script>
+</body>
+</html>
